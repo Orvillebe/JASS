@@ -144,6 +144,41 @@ enum SystemMonitors {
             return Monitor(id: index, frame: axFrame)
         }
     }
+
+    /// Returns the "anchor" monitor: the user's home base for the swap.
+    /// On laptops we want the built-in screen (the laptop lid). On Macs
+    /// without a built-in display (iMac, Mac mini, Mac Studio) we fall back
+    /// to whichever screen carries the menu bar (NSScreen.screens.first).
+    ///
+    /// CGDisplayIsBuiltin tells us if a CoreGraphics display is the built-in
+    /// one. We match it back to our Monitor list via the display ID stored
+    /// on each NSScreen's deviceDescription.
+    static func anchorMonitor(in monitors: [Monitor]) -> Monitor? {
+        for (index, screen) in NSScreen.screens.enumerated() {
+            let key = NSDeviceDescriptionKey("NSScreenNumber")
+            guard let displayID = screen.deviceDescription[key] as? CGDirectDisplayID else { continue }
+            if CGDisplayIsBuiltin(displayID) != 0 {
+                return monitors.first(where: { $0.id == index })
+            }
+        }
+        return monitors.first
+    }
+
+    /// Returns the monitor that currently contains the mouse cursor, or nil
+    /// if the cursor falls outside every known display (which can briefly
+    /// happen during display reconfiguration).
+    static func monitorUnderCursor(in monitors: [Monitor]) -> Monitor? {
+        // NSEvent.mouseLocation is in Cocoa coordinates (origin bottom-left
+        // of the primary screen). Convert to AX coordinates so it lines up
+        // with our Monitor frames, which are in AX space.
+        guard let primary = NSScreen.screens.first else { return nil }
+        let cocoa = NSEvent.mouseLocation
+        let axPoint = CGPoint(
+            x: cocoa.x,
+            y: primary.frame.height - cocoa.y
+        )
+        return monitors.first(where: { $0.frame.contains(axPoint) })
+    }
 }
 
 // MARK: - Window enumeration and moving
@@ -203,24 +238,32 @@ enum SystemWindows {
     /// window is handled independently: a failure on one window does not
     /// stop the others, but does trigger a best-effort rollback of just
     /// that window's changes.
+    ///
+    /// `monitors` here is the swap pair (the two monitors that should
+    /// receive moved windows), not the full list of connected displays.
+    /// We re-check that those two are still present at apply time; the
+    /// presence or absence of other monitors does not matter.
     @discardableResult
     static func apply(_ moves: [WindowMove], monitors: [Monitor]) -> MoveReport {
-        // Re-check: the display configuration may have changed between
-        // computing moves and applying them (hotplug during the blink, sleep
-        // transitions, etc.). If the set of monitor ids is different now,
-        // the moves were computed against a stale layout and applying them
-        // could place windows on coordinates that no longer correspond to
-        // any screen. Abort entirely in that case.
+        // Re-check: between computing the moves and applying them, a display
+        // could have been disconnected (sleep transition, USB-C hub hiccup,
+        // a hotplug during the blink). If any of the monitors we're about
+        // to move windows TO is no longer connected, abort entirely. Apply
+        // would otherwise push windows to coordinates outside any visible
+        // display.
         let currentMonitors = SystemMonitors.enumerateAll()
         let currentIds = Set(currentMonitors.map { $0.id })
         let requestedIds = Set(monitors.map { $0.id })
-        guard currentIds == requestedIds else {
-            Log.warn("Display configuration changed between compute and apply (was \(requestedIds), now \(currentIds)); aborting swap")
+        guard requestedIds.isSubset(of: currentIds) else {
+            Log.warn("A monitor in the swap pair disappeared between compute and apply (requested \(requestedIds), have \(currentIds)); aborting swap")
             var aborted = MoveReport()
             aborted.skipped = moves.count
             return aborted
         }
 
+        // Build the lookup from the current monitors so we use up-to-date
+        // frames in case a display's resolution changed between compute
+        // and apply. Only the ones we actually need are looked up below.
         let monitorsById: [Int: Monitor] = Dictionary(uniqueKeysWithValues:
             currentMonitors.map { ($0.id, $0) }
         )
