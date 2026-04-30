@@ -4,10 +4,21 @@ Swap all your windows between two monitors with a single shortcut.
 
 ## What it does
 
-You have two monitors. Internal laptop screen with some windows, external
-monitor with others. Press one shortcut, everything trades places. Window
-positions scale proportionally so a window in the top-left of monitor A lands
-in the top-left of monitor B, regardless of different resolutions.
+You have multiple monitors. Press one shortcut, your windows trade places
+between two of them. Window positions scale proportionally so a window in
+the top-left of monitor A lands in the top-left of monitor B, regardless
+of different resolutions.
+
+Behaviour by number of connected displays:
+
+- **One display.** Nothing to swap; JASS shows a brief explanation if you
+  trigger it.
+- **Two displays.** All windows trade between the two screens.
+- **Three or more displays.** JASS swaps your built-in (or primary) screen
+  with whichever external screen your cursor is on at the moment you press
+  the shortcut. Windows on other displays stay put.
+
+Other behaviour:
 
 - Default shortcut: **Option+Up**
 - Handles maximized windows correctly on the new monitor
