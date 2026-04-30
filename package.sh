@@ -34,8 +34,12 @@ echo "Preparing staging directory..."
 rm -rf "$STAGING_DIR" "$DMG_PATH"
 mkdir -p "$STAGING_DIR" "$DIST_DIR"
 
-# Copy the app and create a symlink to /Applications so users can drag-drop.
-cp -R "$APP_BUNDLE" "$STAGING_DIR/"
+# Copy the app using `ditto` instead of `cp -R`. `ditto` is Apple's own tool
+# for app copying: it preserves code signatures, extended attributes, and
+# HFS+ metadata that `cp` can strip, and which TCC relies on to recognize
+# the app as the same identity it granted permission to. Using plain `cp`
+# here can invalidate the ad-hoc signature we carefully applied in build.sh.
+ditto "$APP_BUNDLE" "$STAGING_DIR/$APP_NAME.app"
 ln -s /Applications "$STAGING_DIR/Applications"
 
 # Bundle a short install guide so users understand the one-time setup steps
@@ -55,7 +59,11 @@ JustAScreenSwitcher (JASS) - one-time install
    JASS in the list.
 
 4. Launch JASS from Applications (or from Spotlight). A small up/down arrow
-   icon appears in the menu bar. Press Option+Up to swap your two screens.
+   icon appears in the menu bar. Press Option+Up to swap your screens.
+
+   With two screens, all your windows trade places. With three or more
+   screens, JASS swaps your built-in (or primary) screen with whichever
+   external screen your cursor is on.
 
 Configuration lives in the menu bar icon. Click it for shortcut, blink
 effect, and settle time settings.
