@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  JASS app icon — arrows-only variant.
+  Colors:
+    #26262A  charcoal (background)
+    #B7BA19  Orville green (arrows)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect x="0" y="0" width="1024" height="1024" rx="230" ry="230" fill="#26262A"/>
+  <g fill="none" stroke="#B7BA19" stroke-width="90" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Up arrow (left) -->
+    <path d="M 347 752 L 347 272"/>
+    <path d="M 197 422 L 347 272 L 497 422"/>
+    <!-- Down arrow (right) -->
+    <path d="M 677 272 L 677 752"/>
+    <path d="M 527 602 L 677 752 L 827 602"/>
+  </g>
+</svg>
