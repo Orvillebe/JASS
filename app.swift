@@ -418,32 +418,35 @@ enum ConfigLoader {
 
 // MARK: - Core logic
 
-/// Given the current state of windows and monitors, return the list of moves
-/// that swaps everything between the two monitors while preserving each
-/// window's relative position and size within its monitor.
+/// Given a list of windows and a pair of monitors to swap, return the list
+/// of moves that swaps windows between those two monitors while preserving
+/// each window's relative position and size within its monitor.
+///
+/// Windows on monitors that are not part of the swap pair are left alone
+/// (they don't appear in the returned moves at all). This is what makes
+/// three-or-more-monitor setups work: the caller picks two specific
+/// monitors to swap, and any other connected display is untouched.
 ///
 /// Pure function. No OS calls. Safe to unit-test.
-///
-/// v1 assumption: exactly two monitors. Windows on anything else are passed
-/// through unchanged (defensive default; the app layer also guards on count).
-func computeSwapMoves(windows: [WindowInfo], monitors: [Monitor]) -> [WindowMove] {
-    guard monitors.count == 2 else { return [] }
-    let a = monitors[0].id
-    let b = monitors[1].id
+func computeSwapMoves(windows: [WindowInfo], swapPair: (Monitor, Monitor)) -> [WindowMove] {
+    let a = swapPair.0.id
+    let b = swapPair.1.id
 
-    return windows.map { window in
+    var moves: [WindowMove] = []
+    for window in windows {
         let target: Int
         switch window.monitorId {
         case a: target = b
         case b: target = a
-        default: target = window.monitorId   // unexpected; leave as-is
+        default: continue  // window is on a monitor outside the swap pair; leave it
         }
-        return WindowMove(
+        moves.append(WindowMove(
             reference: window.reference,
             targetMonitorId: target,
             targetRelativeFrame: window.relativeFrame
-        )
+        ))
     }
+    return moves
 }
 
 // MARK: - Application entry point
@@ -650,27 +653,81 @@ final class JASSApp: NSObject, NSApplicationDelegate {
 
     @objc private func swapNow() {
         let monitors = SystemMonitors.enumerateAll()
-        guard monitors.count == 2 else {
-            Log.warn("Swap requested with \(monitors.count) monitors; need exactly 2")
+
+        // Case 1: zero or one monitor. Nothing meaningful to swap.
+        guard monitors.count >= 2 else {
+            Log.warn("Swap requested with \(monitors.count) monitor(s); need at least 2")
             SystemActions.showAlert(
-                title: "JASS needs exactly 2 monitors",
-                message: "Connected monitors: \(monitors.count). JASS will swap windows once you have exactly two displays."
+                title: "JASS needs at least 2 monitors",
+                message: "JASS can only swap windows when at least two displays are connected. JASS sees \(monitors.count) right now."
             )
             return
         }
+
+        // Pick the two monitors to swap between. With exactly two monitors
+        // we always swap those two, ignoring cursor position, because that
+        // matches the original behaviour and there's no ambiguity. With
+        // three or more we use the cursor to pick the partner.
+        let pair: (Monitor, Monitor)
+        if monitors.count == 2 {
+            pair = (monitors[0], monitors[1])
+        } else {
+            guard let resolved = pickSwapPairFromCursor(in: monitors) else {
+                return  // pickSwapPairFromCursor already showed user feedback
+            }
+            pair = resolved
+        }
+
         let windows = SystemWindows.enumerateAll(monitors: monitors)
-        let moves = computeSwapMoves(windows: windows, monitors: monitors)
+        let moves = computeSwapMoves(windows: windows, swapPair: pair)
+
+        // Pass only the swap pair to apply(), not all monitors. apply()
+        // uses this list to validate target frames; an external monitor
+        // we're not touching shouldn't affect that validation.
+        let monitorsForApply = [pair.0, pair.1]
 
         if config.blink {
             let settle = TimeInterval(config.blinkSettleMs) / 1000.0
             BlinkOverlay.run(settleTime: settle) {
-                let report = SystemWindows.apply(moves, monitors: monitors)
+                let report = SystemWindows.apply(moves, monitors: monitorsForApply)
                 self.handle(report: report)
             }
         } else {
-            let report = SystemWindows.apply(moves, monitors: monitors)
+            let report = SystemWindows.apply(moves, monitors: monitorsForApply)
             handle(report: report)
         }
+    }
+
+    /// Pair the anchor (built-in/primary) display with whichever display
+    /// the cursor is currently on. Shows guidance to the user and returns
+    /// nil when the cursor lands on the anchor itself, since "swap with
+    /// where my cursor is" has no meaning then.
+    ///
+    /// Used in setups with three or more monitors. With exactly two monitors
+    /// `swapNow` short-circuits and pairs them directly without consulting
+    /// the cursor, so this function isn't called there.
+    private func pickSwapPairFromCursor(in monitors: [Monitor]) -> (Monitor, Monitor)? {
+        guard let anchor = SystemMonitors.anchorMonitor(in: monitors) else {
+            Log.warn("Could not determine anchor monitor; aborting swap")
+            return nil
+        }
+        guard let cursorMonitor = SystemMonitors.monitorUnderCursor(in: monitors) else {
+            Log.warn("Cursor is not on any known monitor; aborting swap")
+            SystemActions.showAlert(
+                title: "JASS could not determine target screen",
+                message: "Move the cursor onto the external display you want to swap with, then press the shortcut again."
+            )
+            return nil
+        }
+        if cursorMonitor.id == anchor.id {
+            Log.info("Cursor is on the anchor display; explaining multi-monitor flow to user")
+            SystemActions.showAlert(
+                title: "Choose the screen to swap with",
+                message: "With more than two displays connected, JASS swaps your built-in (or primary) screen with whichever external screen your cursor is on.\n\nMove the cursor onto the external screen you want to swap with, then press the shortcut again."
+            )
+            return nil
+        }
+        return (anchor, cursorMonitor)
     }
 
     /// Log a one-line summary of the swap. Show an alert only when the
