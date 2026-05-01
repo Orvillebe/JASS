@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Target framework: net8.0-windows.
+      The "-windows" suffix unlocks Win32 P/Invoke and System.Windows.Forms,
+      which we need for NotifyIcon. The platform target is x64 because that's
+      what we publish for; ARM64 Windows can be added as a second publish
+      target later if anyone asks.
+    -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <!--
+      WinExe instead of Exe. With Exe, .NET attaches a console window to the
+      process; that window pops up when the user double-clicks the exe and
+      stays around while the app runs, which is wrong for a tray-only tool.
+      WinExe suppresses that. Stderr is still writable (we use it for logs).
+    -->
+    <OutputType>WinExe</OutputType>
+
+    <!--
+      WinForms only for NotifyIcon (the tray icon) and the small modal dialog
+      used by the shortcut recorder. Everything else goes through raw Win32
+      P/Invoke. We accept this dependency because writing a tray icon from
+      scratch on top of Shell_NotifyIcon is a lot of plumbing for no benefit.
+    -->
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <!--
+      Nullable reference types on. We rely on it to make "this could be null"
+      explicit at every OS boundary, mirroring how the Mac code uses optional
+      returns from helpers like readPoint/readSize.
+    -->
+    <Nullable>enable</Nullable>
+
+    <!--
+      LangVersion latest so we can use modern C# (file-scoped namespaces,
+      pattern matching, primary constructors). No runtime impact.
+    -->
+    <LangVersion>latest</LangVersion>
+
+    <!--
+      Embed the manifest. The manifest declares Per-Monitor V2 DPI awareness,
+      which is essential: without it, multi-monitor coords are silently scaled
+      by Windows on mixed-DPI setups and our window moves land in the wrong
+      place. asInvoker keeps us non-elevated, which is correct (an elevated
+      JASS would still fail to move admin-app windows AND would prompt UAC on
+      every launch, two regressions for one).
+    -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!--
+      Application icon. jass.ico is a multi-resolution ICO (16, 24, 32,
+      48, 64, 128, 256) rendered from icon.svg. This sets the icon on
+      the published exe (visible in Explorer, alt-tab, taskbar) and
+      embeds it so that LoadIcon at runtime can pull it from the
+      executable for the tray icon (see TrayIcon in system.cs).
+    -->
+    <ApplicationIcon>jass.ico</ApplicationIcon>
+
+    <AssemblyName>JASS</AssemblyName>
+    <RootNamespace>Jass</RootNamespace>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <!--
+    Embed the icon as a resource as well, so TrayIcon code can load it
+    via Icon.ExtractAssociatedIcon on the running exe path. This is the
+    most reliable cross-runtime way to get the same icon both as window
+    decoration and tray bitmap without bundling extra files alongside
+    the single-file published exe.
+  -->
+  <ItemGroup>
+    <Content Include="jass.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

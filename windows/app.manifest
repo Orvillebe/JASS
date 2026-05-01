@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+
+  <!--
+    Run as the user who launched us (no UAC elevation prompt). An elevated
+    JASS would still fail to move admin-elevated windows due to UIPI, and
+    would inflict a UAC prompt on every launch. Non-elevated is the right
+    default; users who really want to swap admin windows can launch JASS
+    elevated themselves.
+  -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <!--
+    Per-Monitor V2 DPI awareness. Without this, Windows lies to us about
+    monitor and window coordinates on mixed-DPI setups: queries are silently
+    scaled, and our SetWindowPlacement calls land windows at the wrong size
+    and position on the second monitor. PerMonitorV2 means we get raw
+    physical-pixel coordinates and we're trusted to handle DPI changes
+    ourselves (we don't draw anything user-visible at varying sizes, so for
+    JASS that's free).
+  -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
+
+  <!--
+    Declare compatibility with Windows 10 and 11. Without this section,
+    GetVersionEx and a few other APIs lie about the OS version (they cap at
+    Windows 8). JASS doesn't read OS version directly, but the declaration
+    is cheap and future-proofs us.
+  -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+
+</assembly>
