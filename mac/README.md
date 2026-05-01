@@ -1,4 +1,4 @@
-# JustAScreenSwitcher (JASS)
+# JustAScreenSwitcher (JASS) for Mac
 
 Swap all your windows between two monitors with a single shortcut.
 
